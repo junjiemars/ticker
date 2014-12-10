@@ -1,5 +1,6 @@
 /target
 /classes
+/lib/
 /checkouts
 pom.xml
 pom.xml.asc
@@ -7,3 +8,7 @@ pom.xml.asc
 *.class
 /.lein-*
 /.nrepl-port
+.lein-deps-sum
+.lein-repl-history
+.lein-plugins/
+.lein-failures
