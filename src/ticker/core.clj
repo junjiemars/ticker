@@ -1,8 +1,11 @@
 (ns ticker.core
   ;;(:import (java.time LocalDateTime))
+  (:import (java.util TimerTask Timer))
   (:use [korma.db])
   (:use [korma.core])
   (:require [taoensso.carmine :as car :refer (wcar)])
+  ;;(:require [clojurewerkz.quartzite.scheduler :as qs])
+  ;;(:require [clojurewerkz.quartzite.triggers :as qt])
   (:gen-class))
 
 (declare ora
@@ -49,23 +52,37 @@
                     (sqlfn T_NOW)))))
 
 (defn select-t-tick-nodes
-  []
-  (select t-tick-nodes
-          (where (>= :F_LEFT_NUM 0))
-          (order :F_START_NUM :ASC)))
+  [c]
+  (let [s (select t-tick-nodes
+                  (where (> :F_LEFT_NUM 0))
+                  (order :F_START_NUM :ASC))]
+    (when-not (nil? s)
+      (let [n (long (:F_START_NUM (first s)))]
+        (if (<= c n)
+          c
+          n)))))
+
+(defn renew-redis-tick
+  "!todo: 
+  1). compare with previous value
+  if v <= previous then do nothing;
+  2). if redis wrong then renew sms notification."
+  [v]
+  (redis* (car/set "skill_num_1319" v)))
 
 (defn check-t-tick
   []
-  (let [v (select-t-tick-values)
-        n (:F_SKILL_NUMBER v)]
-    (when-not (nil? v)
-      v)))
-
-(defn renew-redis-tick
-  [v]
-  (redis* (car/set "skill_num_1319" v)))
+  (let [s (select-t-tick-values)]
+    (when-not (empty? s)
+      (let [v (long (:F_SKILL_NUMBER (first s)))
+            n (select-t-tick-nodes v)]
+        ;(println v)
+        (println n)
+        (renew-redis-tick n)
+        ))))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, World!"))
+
