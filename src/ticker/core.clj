@@ -1,6 +1,8 @@
 (ns ticker.core
   ;;(:import (java.time LocalDateTime))
-  (:import (java.util TimerTask Timer))
+  ;;(:import (java.util TimerTask Timer))
+  (:import (java.util.concurrent Executors))
+  (:import (java.util.concurrent TimeUnit))
   (:use [korma.db])
   (:use [korma.core])
   (:require [taoensso.carmine :as car :refer (wcar)])
@@ -11,9 +13,11 @@
 (declare ora
          t-tick-values
          t-tick-nodes
-         redis-connection)
+         redis-connection
+         running)
 
 ;;(defn now [] (LocalDateTime/now))
+(def running (ref true))
 
 (def oracle-db {:classname "oracle.jdbc.driver.OracleDriver"
          :subprotocol "oracle"
@@ -81,8 +85,14 @@
         (renew-redis-tick n)
         ))))
 
+(defn ticker
+  []
+  (.scheduleAtFixedRate (Executors/newScheduledThreadPool 1)
+                        (check-t-tick)
+                        0 5 TimeUnit/SECONDS))
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (println "Hello, World!"))
+  (println "Hello, World!")
+  (ticker))
 
