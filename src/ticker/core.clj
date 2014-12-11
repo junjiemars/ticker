@@ -14,8 +14,6 @@
 (:gen-class))
 
 (declare ora
-       tick-values
-       tick-nodes
        redis-connection
        running)
 
@@ -24,86 +22,67 @@
 
 (def oracle-db {:classname "oracle.jdbc.driver.OracleDriver"
        :subprotocol "oracle"
-       :subname "thin:@//localhost:1521/XE"
-       :user "xws"
-       :password "xws"})
+       :subname "thin:@//10.32.122.13:1521/ecndb1"
+       :user "ecos0"
+       :password "ecos0123"})
 
 (def redis-connect {:pool
-                  {:host "localhost"
-                   :port 6379
-                   :db 1}})
+                    {:host "10.32.237.145"
+                     :port 6379
+                     :db 1}})
 (defmacro redis*
 [& body]
 `(car/wcar redis-connection  ~@body))
 
 (defdb ora oracle-db)
 
-(defentity tick-values
-(table :T_1319_SKILL_NUMBER)
-(pk :F_OPER_TIME)
-(entity-fields :F_OPER_TIME
-               :F_SKILL_NUMBER)
-;;(modifier "SYSDATE")
-)
 
-(defentity tick-nodes
-(table :T_1319_SKILLINFO)
-(entity-fields :F_START_NUM
-               :F_LEFT_NUM))
-
-(defn select-tick-values
-[]
-(try (select tick-values
-              (fields [:F_OPER_TIME :F_SKILL_NUMBER])
-              (where (= :F_OPER_TIME
-                        (sqlfn T_NOW))))
-     (catch SQLException e
-       (println e))))
-
-(defn select-tick-nodes
-[c]
-(try (let [s (select tick-nodes
-                     (where (> :F_LEFT_NUM 0))
-                     (order :F_START_NUM :ASC))]
-       (when-not (empty? s)
-         (let [n (long (:F_START_NUM (first s)))]
-           (if (<= c n)
-             c
-               n))))
+(defn select-tick-values*
+  []
+  (try (exec-raw ["SELECT T_1319_TICK_CNT FROM DUAL"]
+                 :results)
        (catch SQLException e
          (println e))))
 
-(defn renew-redis-tick
+(defn insert-tick-sms-alerts*
+  [c]
+  (try (exec-raw ["begin T_1319_SMS_ALERTS(?);end;"
+                  [c]])
+       (catch SQLException e
+         (println e))))
+
+(defn renew-redis-tick*
   "!todo: 
   1). compare with previous value
   if v <= previous then do nothing;
   2). if redis wrong then renew sms notification."
-  [v]
-  (try (redis* (car/set "skill_num_1319" v))
+  [n]
+  (try (redis* (car/set "skill_num_1319" n))
+       (println (str "R#" n))
+       n
        (catch Exception e
+         (insert-tick-sms-alerts* e)
          (println e))))
 
-(defn check-tick
+(defn check-tick*
   []
-  (let [s (select-tick-values)]
+  (let [s (select-tick-values*)]
     (when-not (empty? s)
-      (let [v (long (:F_SKILL_NUMBER (first s)))
-            n (select-tick-nodes v)]
-        ;(println v)
-        (println n)
-        (renew-redis-tick n)
-        ))))
+      (let [n (Long/parseLong (:T_1319_TICK_CNT (first s)))]
+        (println (str "D#" n))
+        (renew-redis-tick* n)
+       ))))
 
 (defn ticker
   []
   (.scheduleWithFixedDelay
    (Executors/newScheduledThreadPool 1)
-   check-tick
+   check-tick*
    0 5 TimeUnit/SECONDS))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (println "Hello, World!")
+  (println "ticking...")
   (ticker))
 
