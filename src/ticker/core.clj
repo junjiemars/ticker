@@ -1,52 +1,52 @@
 (ns ticker.core
-;;(:import (java.time LocalDateTime))
-;;(:import (java.util TimerTask Timer))
-(:import (java.util.concurrent Executors))
-(:import (java.util.concurrent TimeUnit))
-(:import (java.util.concurrent ScheduledExecutorService))
-(:import (java.util.concurrent ScheduledFuture))
-(:import (java.sql SQLException))
-(:use [korma.db])
-(:use [korma.core])
-(:require [taoensso.carmine :as car :refer (wcar)])
-;;(:require [clojurewerkz.quartzite.scheduler :as qs])
-;;(:require [clojurewerkz.quartzite.triggers :as qt])
-(:gen-class))
+  (:import (java.util.concurrent Executors))
+  (:import (java.util.concurrent TimeUnit))
+  (:import (java.util.concurrent ScheduledExecutorService))
+  (:import (java.util.concurrent ScheduledFuture))
+  (:import (java.sql SQLException))
+  (:use [korma.db])
+  (:use [korma.core])
+  (:require [taoensso.carmine :as car :refer (wcar)])
+  (:gen-class))
 
 (declare ora
-       redis-connection
+       red*
        running)
 
-;;(defn now [] (LocalDateTime/now))
 (def running (ref true))
 
-(def oracle-db {:classname "oracle.jdbc.driver.OracleDriver"
-       :subprotocol "oracle"
-       :subname "thin:@//10.32.122.13:1521/ecndb1"
-       :user "ecos0"
-       :password "ecos0123"})
+(def oracle-db*
+  (oracle {:subname "@10.32.122.13:1521:ecnDB1"
+           :user "ecos0"
+           :password "ecos0123"
+           :naming {:keys clojure.string/lower-case
+                    :fields clojure.string/upper-case
+                    }
+           }))
 
-(def redis-connect {:pool
-                    {:host "10.32.237.145"
-                     :port 6379
-                     :db 1}})
+(def red* {:pool {}
+           :spec {:host "10.32.237.145"
+                  :port 6379
+                  :db 1}})
+
 (defmacro redis*
-[& body]
-`(car/wcar redis-connection  ~@body))
+  [& body]
+  `(car/wcar red*  ~@body))
 
-(defdb ora oracle-db)
-
+(defdb ora oracle-db*)
 
 (defn select-tick-values*
   []
-  (try (exec-raw ["SELECT T_1319_TICK_CNT FROM DUAL"]
+  (try (exec-raw ora
+                 ["SELECT T_1319_TICK_CNT FROM DUAL"]
                  :results)
        (catch SQLException e
          (println e))))
 
 (defn insert-tick-sms-alerts*
   [c]
-  (try (exec-raw ["begin T_1319_SMS_ALERTS(?);end;"
+  (try (exec-raw ora
+                 ["begin T_1319_SMS_ALERTS(?);end;"
                   [c]])
        (catch SQLException e
          (println e))))
@@ -61,14 +61,15 @@
        (println (str "R#" n))
        n
        (catch Exception e
-         (insert-tick-sms-alerts* e)
+         (insert-tick-sms-alerts* (.getMessage e))
          (println e))))
 
-(defn check-tick*
+(defn check-tick
   []
   (let [s (select-tick-values*)]
+    (println s)
     (when-not (empty? s)
-      (let [n (Long/parseLong (:T_1319_TICK_CNT (first s)))]
+      (let [n (Long/parseLong (:t_1319_tick_cnt (first s)))]
         (println (str "D#" n))
         (renew-redis-tick* n)
        ))))
@@ -77,7 +78,7 @@
   []
   (.scheduleWithFixedDelay
    (Executors/newScheduledThreadPool 1)
-   check-tick*
+   check-tick
    0 5 TimeUnit/SECONDS))
 
 (defn -main
